@@ -1,0 +1,6 @@
+{
+  "name": "AI Subtitle Generator (Netlify)",
+  "description": "Generate subtitles from your audio or video files using AI. Export in .srt format, ready for video editing software like Premiere Pro or After Effects.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
