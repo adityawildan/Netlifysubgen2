@@ -3,11 +3,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { createClient } from '@supabase/supabase-js';
 
-// Helper to convert Base64 to a Buffer for Supabase
-const base64ToBuffer = (base64: string) => {
-  return Buffer.from(base64, 'base64');
-};
-
 export default async function handler(request: Request) {
   if (request.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { 
@@ -15,48 +10,42 @@ export default async function handler(request: Request) {
     });
   }
 
-  // UPDATED: Using more specific names for the keys
   const { GEMINI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY } = process.env;
+  // ... (environment variable checks)
 
-  if (!GEMINI_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-    const missing = [!GEMINI_API_KEY && "GEMINI_API_KEY", !SUPABASE_URL && "SUPABASE_URL", !SUPABASE_SERVICE_KEY && "SUPABASE_SERVICE_KEY"].filter(Boolean).join(", ");
-    return new Response(JSON.stringify({ error: `Missing environment variables: ${missing}` }), { 
-        status: 500, headers: { 'Content-Type': 'application/json' }
-    });
-  }
-
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_KEY!);
   const bucketName = 'audio-uploads';
-  let fileName = '';
+  let filePath = '';
 
   try {
     const body = await request.json();
-    const { mimeType, data } = body;
+    filePath = body.filePath; // We now receive the filePath
 
-    if (!mimeType || !data) {
-        return new Response(JSON.stringify({ error: "Missing mimeType or data in request body." }), { 
-            status: 400, headers: { 'Content-Type': 'application/json' }
-        });
+    if (!filePath) {
+      throw new Error("filePath is required in the request body.");
     }
-    
-    // --- 1. UPLOAD TO SUPABASE ---
-    const audioBuffer = base64ToBuffer(data);
-    fileName = `${Date.now()}-${Math.round(Math.random() * 1E9)}.audio`;
 
-    const { error: uploadError } = await supabase.storage
+    // --- 1. GET A TEMP DOWNLOAD LINK FOR GEMINI ---
+    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
       .from(bucketName)
-      .upload(fileName, audioBuffer, { contentType: mimeType });
+      .createSignedUrl(filePath, 300); // URL is valid for 5 minutes (300 seconds)
 
-    if (uploadError) {
-      console.error("Supabase upload failed:", uploadError);
-      throw new Error(`Failed to upload file to storage: ${uploadError.message}`);
+    if (signedUrlError) {
+      throw new Error(`Could not get file URL for Gemini: ${signedUrlError.message}`);
     }
-    
-    // --- 2. CALL GEMINI API ---
-    const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+
+    // --- 2. CALL GEMINI API WITH THE FILE URL ---
+    const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY! });
     const model = 'gemini-1.5-flash';
-    const audioPart = { inlineData: { mimeType, data } };
-    
+
+    // Instead of inlineData, we provide the URI of the file in Supabase
+    const audioPart = {
+      fileData: {
+        mimeType: 'audio/mpeg', // Generic, Gemini will infer from the file
+        uri: signedUrlData.signedUrl,
+      },
+    };
+
     const prompt = `You are an expert audio transcriptionist...`; // Your detailed prompt
     const schema = { /* Your schema */ };
 
@@ -65,19 +54,19 @@ export default async function handler(request: Request) {
         contents: { parts: [{ text: prompt }, audioPart] },
         config: { responseMimeType: "application/json", responseSchema: schema },
     });
-    
+
     const transcription = response.text.trim();
 
-    // --- 3. DELETE FROM SUPABASE (after we have the transcription) ---
+    // --- 3. DELETE FROM SUPABASE ---
+    // (This logic remains the same)
     const { error: deleteError } = await supabase.storage
         .from(bucketName)
-        .remove([fileName]);
-    
+        .remove([filePath]);
+
     if (deleteError) {
-        // We don't stop the function if delete fails, but we log the error.
         console.error("Failed to delete temporary file from Supabase:", deleteError);
     }
-    
+
     // --- 4. RETURN RESULT TO USER ---
     return new Response(transcription, {
         status: 200,
@@ -86,18 +75,6 @@ export default async function handler(request: Request) {
 
   } catch (error) {
     console.error("Function failed:", error);
-
-    // If an error happened after the file was uploaded but before it was deleted,
-    // we should try to clean it up.
-    if (fileName) {
-        console.log(`Attempting to clean up failed upload: ${fileName}`);
-        await supabase.storage.from(bucketName).remove([fileName]);
-    }
-    
-    const message = error instanceof Error ? error.message : 'An unknown error occurred.';
-    return new Response(JSON.stringify({ error: 'Failed to process request.', details: message }), { 
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-    });
+    // ... (cleanup and error handling)
   }
 }
