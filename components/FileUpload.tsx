@@ -55,12 +55,12 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileChange }) => {
         <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center">
           <UploadIcon className="mx-auto h-12 w-12 text-gray-500" />
           <span className="mt-4 block text-lg font-semibold text-gray-200">
-            Drop your audio/video file here
+            Drop file audio/video di sini mase
           </span>
           <span className="mt-1 block text-sm text-gray-400">or click to browse</span>
         </label>
       </div>
-       <p className="text-xs text-gray-500 mt-4">Max file size: 5MB. Supported formats include MP3, WAV, MP4, MOV, etc.</p>
+       <p className="text-xs text-gray-500 mt-4">Max file size: 50MB. Supported formats include MP3, WAV, MP4, MOV, etc.</p>
     </div>
   );
 };
