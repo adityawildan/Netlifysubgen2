@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { AppStatus, SubtitleSegment } from './types';
+import { AppStatus } from './types';
 import { generateTranscription } from './services/geminiService';
 import { convertToSRT } from './utils/srtConverter';
 import FileUpload from './components/FileUpload';
@@ -28,28 +28,64 @@ const App: React.FC = () => {
     }
   };
 
-  const handleGenerate = useCallback(async () => {
-    if (!file) return;
+  // In App.tsx
 
-    setStatus(AppStatus.Processing);
-    setErrorMessage('');
+const handleGenerate = useCallback(async () => {
+  if (!file) return;
 
-    try {
-      const transcriptionResult = await generateTranscription(file);
-      if (transcriptionResult && transcriptionResult.length > 0) {
-        const srt = convertToSRT(transcriptionResult);
-        setSrtContent(srt);
-        setStatus(AppStatus.Success);
-      } else {
-        throw new Error('Transcription failed or returned no content. The AI may not have been able to process this file.');
-      }
-    } catch (error) {
-      console.error(error);
-      const message = error instanceof Error ? error.message : 'An unknown error occurred.';
-      setErrorMessage(message);
-      setStatus(AppStatus.Error);
+  setStatus(AppStatus.Processing);
+  setErrorMessage('');
+
+  try {
+    // --- STEP 1: Get the secure upload URL from our new function ---
+    let res = await fetch('/.netlify/functions/create-upload-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileName: file.name }),
+    });
+
+    if (!res.ok) throw new Error('Could not get upload URL.');
+    const { signedUrl, filePath } = await res.json();
+
+    // --- STEP 2: Upload the file DIRECTLY to Supabase ---
+    res = await fetch(signedUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type },
+      body: file,
+    });
+
+    if (!res.ok) throw new Error('File upload to storage failed.');
+
+    // --- STEP 3: Call our 'generate' function with the file's path ---
+    res = await fetch('/.netlify/functions/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filePath: filePath }),
+    });
+
+    if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'The transcription request failed.');
     }
-  }, [file]);
+
+    const transcriptionResult = await res.json();
+
+    // --- STEP 4: Process the final result ---
+    if (transcriptionResult && transcriptionResult.length > 0) {
+      const srt = convertToSRT(transcriptionResult);
+      setSrtContent(srt);
+      setStatus(AppStatus.Success);
+    } else {
+      throw new Error('Transcription failed or returned no content.');
+    }
+
+  } catch (error) {
+    console.error(error);
+    const message = error instanceof Error ? error.message : 'An unknown error occurred.';
+    setErrorMessage(message);
+    setStatus(AppStatus.Error);
+  }
+}, [file]);
 
   const handleDownload = () => {
     if (!srtContent) return;
