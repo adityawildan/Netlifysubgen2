@@ -16,7 +16,7 @@ const App: React.FC = () => {
   const handleFileChange = (selectedFile: File | null) => {
     if (selectedFile) {
       // 5MB limit for serverless function payload
-      if (selectedFile.size > 5 * 1024 * 1024) { 
+      if (selectedFile.size > 50 * 1024 * 1024) { 
         setErrorMessage('File is too large. Kegedean bang, file gabisa lebih dari 5MB.');
         setStatus(AppStatus.Error);
         setFile(null);
