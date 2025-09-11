@@ -4,12 +4,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { createClient } from '@supabase/supabase-js';
 
 export default async function handler(request: Request) {
-  if (request.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { 
-        status: 405, headers: { 'Content-Type': 'application/json' }
-    });
-  }
-
+  // ... (all the setup code at the top remains the same)
   const { GEMINI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY } = process.env;
   if (!GEMINI_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
       return new Response(JSON.stringify({ error: "Missing environment variables" }), { 
@@ -30,7 +25,6 @@ export default async function handler(request: Request) {
       throw new Error("filePath and mimeType are required in the request body.");
     }
     
-    // --- NEW: DOWNLOAD THE FILE FROM SUPABASE ---
     const { data: fileBlob, error: downloadError } = await supabase.storage
       .from(bucketName)
       .download(filePath);
@@ -42,18 +36,16 @@ export default async function handler(request: Request) {
       throw new Error("Downloaded file is empty.");
     }
     
-    // --- NEW: CONVERT FILE TO BASE64 ---
     const fileBuffer = await fileBlob.arrayBuffer();
     const base64Data = Buffer.from(fileBuffer).toString('base64');
     
-    // --- CALL GEMINI API WITH THE RAW DATA (inlineData) ---
     const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY! });
     const model = 'gemini-1.5-flash';
     
     const audioPart = {
       inlineData: {
         mimeType: mimeType,
-        data: base64Data, // Back to using the Base64 string
+        data: base64Data,
       },
     };
     
@@ -68,6 +60,10 @@ export default async function handler(request: Request) {
     
     const transcription = response.text.trim();
 
+    // --- NEW SPY MESSAGE: Let's see what the AI actually said ---
+    console.log("--- AI RESPONSE ---");
+    console.log("Raw transcription result from AI:", transcription);
+
     // --- DELETE FROM SUPABASE ---
     const { error: deleteError } = await supabase.storage.from(bucketName).remove([filePath]);
     if (deleteError) {
@@ -81,7 +77,6 @@ export default async function handler(request: Request) {
 
   } catch (error) {
     console.error("Caught an error in the handler:", error);
-    // ... cleanup and error handling
     if (filePath) {
         await supabase.storage.from(bucketName).remove([filePath]);
     }
