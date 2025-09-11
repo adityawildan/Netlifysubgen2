@@ -27,7 +27,8 @@ export default async function handler(request: Request) {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     const bucketName = 'audio-uploads';
-    const filePath = `${Date.now()}-${fileName}`;
+    const sanitizedFileName = fileName.replace(/\s+/g, '_');
+    const filePath = `${Date.now()}-${sanitizedFileName}`;
 
     // Ask Supabase to create a special upload URL
     const { data, error } = await supabase.storage
