@@ -56,11 +56,11 @@ const handleGenerate = useCallback(async () => {
 
     if (!res.ok) throw new Error('File upload to storage failed.');
 
-    // --- STEP 3: Call our 'generate' function with the file's path ---
+    // --- STEP 3: Call our 'generate' function with the file's path AND type ---
     res = await fetch('/.netlify/functions/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filePath: filePath }),
+        body: JSON.stringify({ filePath: filePath, mimeType: file.type }), // <-- ADDED mimeType
     });
 
     if (!res.ok) {
