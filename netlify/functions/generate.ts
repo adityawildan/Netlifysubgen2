@@ -11,7 +11,7 @@ export default async function handler(request: Request) {
   }
 
   const { GEMINI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY } = process.env;
-  // ... (environment variable checks)
+  // ... (environment variable checks can remain the same)
 
   const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_KEY!);
   const bucketName = 'audio-uploads';
@@ -19,30 +19,30 @@ export default async function handler(request: Request) {
 
   try {
     const body = await request.json();
-    filePath = body.filePath; // We now receive the filePath
+    filePath = body.filePath;
+    const mimeType = body.mimeType; // <-- RECEIVE THE MIME TYPE
 
-    if (!filePath) {
-      throw new Error("filePath is required in the request body.");
+    if (!filePath || !mimeType) {
+      throw new Error("filePath and mimeType are required in the request body.");
     }
 
     // --- 1. GET A TEMP DOWNLOAD LINK FOR GEMINI ---
     const { data: signedUrlData, error: signedUrlError } = await supabase.storage
       .from(bucketName)
-      .createSignedUrl(filePath, 300); // URL is valid for 5 minutes (300 seconds)
+      .createSignedUrl(filePath, 300);
 
     if (signedUrlError) {
       throw new Error(`Could not get file URL for Gemini: ${signedUrlError.message}`);
     }
 
-    // --- 2. CALL GEMINI API WITH THE FILE URL ---
+    // --- 2. CALL GEMINI API WITH THE FILE URL AND CORRECT MIME TYPE ---
     const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY! });
     const model = 'gemini-1.5-flash';
 
-    // Instead of inlineData, we provide the URI of the file in Supabase
     const audioPart = {
       fileData: {
-        mimeType: 'audio/mpeg', // Generic, Gemini will infer from the file
-        uri: signedUrlData.signedUrl,
+        mimeType: mimeType, // <-- USE THE DYNAMIC MIME TYPE
+        uri: signedUrlData!.signedUrl,
       },
     };
 
@@ -58,11 +58,8 @@ export default async function handler(request: Request) {
     const transcription = response.text.trim();
 
     // --- 3. DELETE FROM SUPABASE ---
-    // (This logic remains the same)
-    const { error: deleteError } = await supabase.storage
-        .from(bucketName)
-        .remove([filePath]);
-
+    // ... (delete logic remains the same)
+    const { error: deleteError } = await supabase.storage.from(bucketName).remove([filePath]);
     if (deleteError) {
         console.error("Failed to delete temporary file from Supabase:", deleteError);
     }
@@ -75,6 +72,6 @@ export default async function handler(request: Request) {
 
   } catch (error) {
     console.error("Function failed:", error);
-    // ... (cleanup and error handling)
+    // ... (cleanup and error handling can remain the same)
   }
 }
